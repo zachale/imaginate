@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from pymongo import MongoClient
 import gridfs
 import os
+import base64
 
 # Initialize clients
 app = Flask(__name__)
@@ -48,6 +49,35 @@ def read(filename):
         response.headers.set("Content-Length", f"{res.length}")
         return response
     return "Not found"
+
+
+@app.route("/image/verification-portal", methods=["GET"])
+def verification_portal():
+    obj = list(db['fs.files'].aggregate([{ '$sample': { 'size': 1 } }]))[0] #TODO: MAKE IT BASED ON STATUS
+    print(obj)
+    if obj:
+        grid_out = fs.find_one({"_id":obj['_id']})
+        data = grid_out.read()
+        base64_data = base64.b64encode(data).decode('ascii');
+        return render_template('verification_portal.html', id=obj['_id'], img_found=True, img_src=base64_data, obj_data=obj)
+    return render_template('verification_portal.html', img_found=False)
+
+@app.route("/image/update-status", methods=["POST"])
+def update_status():
+    status = request.form['status']
+    if status:
+        query_filter = { '_id':request.form['id'] }
+        update_operation = { "$set" : { "status" : status } }
+        db['fs.files'].find_one_and_update(query_filter, update_operation)
+    else:
+        return "new status not recieved",400  
+    return "status updated",200
+
+@app.route("/image/delete_rejected", methods=["DELETE"])
+def delete_rejected():
+    filter = {"status":"rejected"}
+    results = db["fs.files"].delete_many(filter)
+    return results, 200
 
 if __name__ == "__main__":
     app.run()
